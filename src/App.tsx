@@ -1,35 +1,77 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect } from "react";
+import { Controls } from "./components/Controls";
+import { GameBoard } from "./components/GameBoard";
+import { GameInfo } from "./components/GameInfo";
+import { MessageBox } from "./components/MessageBox";
+import { useMineSweeper } from "./hooks/useMineSweeper";
+import {
+  GameBoardContainer,
+  GameContainer,
+  GameTitle,
+} from "./styles/GameStyles";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const {
+    board,
+    gameOver,
+    isWin,
+    remainingMines,
+    secondsElapsed,
+    difficulty,
+    revealCell,
+    toggleFlag,
+    attemptChordReveal,
+    newGame,
+    changeDifficulty,
+  } = useMineSweeper();
+
+  // Load Google font
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap";
+    document.head.appendChild(link);
+
+    return () => {
+      document.head.removeChild(link);
+    };
+  }, []);
+
+  // Determine message to display
+  const getMessage = () => {
+    if (!gameOver) return null;
+    return isWin ? "You Win! 🎉" : "Game Over! 💥";
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <GameContainer>
+      <GameTitle>Minesweeper</GameTitle>
+
+      <Controls
+        difficulty={difficulty}
+        onNewGame={newGame}
+        onChangeDifficulty={changeDifficulty}
+      />
+
+      <GameInfo
+        remainingMines={remainingMines}
+        secondsElapsed={secondsElapsed}
+      />
+
+      <GameBoardContainer>
+        <GameBoard
+          board={board}
+          gameOver={gameOver}
+          onRevealCell={revealCell}
+          onToggleFlag={toggleFlag}
+          onChordReveal={attemptChordReveal}
+        />
+      </GameBoardContainer>
+
+      <MessageBox message={getMessage()} />
+    </GameContainer>
+  );
 }
 
-export default App
+export default App;

@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minesweeper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        /* Apply the game font */
+        body, button, select, .game-info div, .cell {
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        /* Basic cell styling */
+        .cell {
+            width: 30px; /* Fixed size for cells */
+            height: 30px;
+            border: 2px outset #bdbdbd; /* Classic Minesweeper border */
+            background-color: #bdbdbd; /* Covered cell color */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px; /* Adjusted font size for cell content */
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none; /* Prevent text selection */
+            line-height: 1; /* Ensure text/icons are centered vertically */
+            color: black; /* Default text color */
+        }
+
+        /* Revealed cell styling */
+        .cell.revealed {
+            border: 1px solid #757575; /* Inset border */
+            background-color: #e0e0e0; /* Lighter background when revealed */
+            cursor: default;
+        }
+
+        /* Styling for numbers within revealed cells */
+        .cell.revealed[data-mines="1"] { color: blue; }
+        .cell.revealed[data-mines="2"] { color: green; }
+        .cell.revealed[data-mines="3"] { color: red; }
+        .cell.revealed[data-mines="4"] { color: purple; }
+        .cell.revealed[data-mines="5"] { color: maroon; }
+        .cell.revealed[data-mines="6"] { color: turquoise; }
+        .cell.revealed[data-mines="7"] { color: black; }
+        .cell.revealed[data-mines="8"] { color: gray; }
+
+        /* Styling for flagged cells */
+        .cell.flagged::before {
+            content: "🚩"; /* Flag emoji */
+            font-size: 16px; /* Adjust emoji size */
+        }
+        /* Hide ::before content if innerHTML is set (e.g., for game over state) */
+        .cell:not(:empty)::before {
+            content: none;
+        }
+
+
+        /* Styling for exploded mine (the one clicked) */
+        .cell.mine.revealed {
+            background-color: red; /* Red background for the clicked mine */
+        }
+        .cell.mine.revealed::before {
+             /* Use innerHTML now, but keep for potential fallback */
+            content: "💣";
+            font-size: 16px;
+        }
+
+        /* Styling for other revealed mines at game over (not clicked) */
+        .cell.mine.game-over:not(.revealed):not(.flagged) {
+             background-color: #e0e0e0; /* Match revealed background */
+             border: 1px solid #757575; /* Match revealed border */
+        }
+         .cell.mine.game-over:not(.revealed):not(.flagged)::before {
+              /* Use innerHTML now */
+             content: "💣";
+             font-size: 16px;
+         }
+
+         /* Styling for incorrectly flagged cells at game over */
+         .cell.flagged.incorrect.game-over {
+             background-color: #e0e0e0; /* Match revealed background */
+             border: 1px solid #757575; /* Match revealed border */
+         }
+         .cell.flagged.incorrect.game-over::before {
+             /* Use innerHTML now */
+             content: "❌";
+             font-size: 16px;
+         }
+
+
+        /* Game board grid styling */
+        #game-board {
+            display: grid;
+            border: 4px solid #757575; /* Outer border for the grid */
+            background-color: #bdbdbd; /* Background for the grid gaps */
+            gap: 1px; /* Small gap to show individual cells */
+            margin: 20px auto; /* Center the board */
+            width: fit-content; /* Adjust width to content */
+        }
+
+        /* Button styling */
+        button, select {
+            padding: 8px 16px;
+            border: 2px outset #bdbdbd;
+            background-color: #e0e0e0;
+            cursor: pointer;
+            font-size: 0.8rem; /* Slightly smaller font for controls */
+            transition: background-color 0.2s ease;
+        }
+        button:active, select:active {
+             border: 2px inset #bdbdbd;
+             background-color: #bdbdbd;
+        }
+        button:hover, select:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* Message box styling */
+        #message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            z-index: 100;
+            display: none; /* Hidden by default */
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-200 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-3xl mb-4 text-gray-800">Minesweeper</h1>
+
+    <div class="controls flex items-center gap-4 mb-4 bg-gray-300 p-3 rounded-lg shadow-md">
+        <label for="difficulty" class="text-sm">Difficulty:</label>
+        <select id="difficulty" class="rounded border-gray-400">
+            <option value="beginner">Beginner (9x9, 10 Mines)</option>
+            <option value="intermediate">Intermediate (16x16, 40 Mines)</option>
+            <option value="expert">Expert (16x30, 99 Mines)</option>
+            </select>
+        <button id="new-game-btn" class="rounded shadow hover:bg-blue-600 bg-blue-500 text-white">New Game</button>
+    </div>
+
+    <div class="game-info flex justify-between w-full max-w-md mb-4 bg-gray-300 p-3 rounded-lg shadow-md text-lg">
+        <div id="mine-counter" class="text-red-600">Mines: 0</div>
+        <div id="timer" class="text-blue-600">Time: 0</div>
+    </div>
+
+    <div id="game-board-container" class="flex justify-center">
+         <div id="game-board">
+             </div>
+    </div>
+
+    <div id="message-box">Game Over!</div>
+
+
+    <script>
+        // --- DOM Elements ---
+        const gameBoard = document.getElementById('game-board');
+        const difficultySelector = document.getElementById('difficulty');
+        const newGameBtn = document.getElementById('new-game-btn');
+        const mineCounterDisplay = document.getElementById('mine-counter');
+        const timerDisplay = document.getElementById('timer');
+        const messageBox = document.getElementById('message-box');
+        const gameBoardContainer = document.getElementById('game-board-container');
+
+        // --- Game Settings ---
+        const difficulties = {
+            beginner: { rows: 9, cols: 9, mines: 10 },
+            intermediate: { rows: 16, cols: 16, mines: 40 },
+            expert: { rows: 16, cols: 30, mines: 99 }
+            // custom: { rows: 10, cols: 10, mines: 15 } // Example
+        };
+
+        // --- Game State Variables ---
+        let currentDifficulty = 'beginner';
+        let rows, cols, mineCount;
+        let board = []; // 2D array representing the game board state
+        let mineLocations = []; // Array of {r, c} objects for mine positions
+        let flagsPlaced = 0;
+        let revealedCells = 0;
+        let totalNonMineCells;
+        let timerInterval = null;
+        let secondsElapsed = 0;
+        let gameOver = false;
+        let firstClick = true;
+
+        // --- Game Logic Functions ---
+
+        /**
+         * Initializes and starts a new game based on the selected difficulty.
+         */
+        function initGame() {
+            // 1. Reset game state
+            gameOver = false;
+            firstClick = true;
+            flagsPlaced = 0;
+            revealedCells = 0;
+            secondsElapsed = 0;
+            mineLocations = [];
+            board = [];
+            gameBoard.innerHTML = ''; // Clear previous board
+            gameBoard.classList.remove('game-over'); // Remove game-over styling class
+            hideMessage();
+            stopTimer();
+
+            // 2. Get settings for the selected difficulty
+            const settings = difficulties[currentDifficulty];
+            rows = settings.rows;
+            cols = settings.cols;
+            mineCount = settings.mines;
+            totalNonMineCells = rows * cols - mineCount;
+
+            // 3. Update UI displays
+            updateMineCounter();
+            timerDisplay.textContent = `Time: ${secondsElapsed}`;
+
+            // 4. Create the board data structure (initially all covered)
+            for (let r = 0; r < rows; r++) {
+                board[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    board[r][c] = {
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        adjacentMines: 0,
+                        element: null // Reference to the DOM element
+                    };
+                }
+            }
+
+            // 5. Create the visual grid
+            createBoardDOM();
+
+            // 6. Mines are placed *after* the first click (see handleCellClick)
+            console.log(`Game initialized: ${rows}x${cols}, ${mineCount} mines`);
+        }
+
+        /**
+         * Places mines randomly on the board, avoiding the first clicked cell.
+         * @param {number} initialRow - The row of the first click.
+         * @param {number} initialCol - The column of the first click.
+         */
+        function placeMines(initialRow, initialCol) {
+            let minesToPlace = mineCount;
+            const safeRadius = 1; // Ensure a 3x3 area around the first click is safe
+
+            while (minesToPlace > 0) {
+                const r = Math.floor(Math.random() * rows);
+                const c = Math.floor(Math.random() * cols);
+
+                // Check if the cell is within the safe radius of the initial click
+                const isSafeZone = Math.abs(r - initialRow) <= safeRadius && Math.abs(c - initialCol) <= safeRadius;
+
+                // Don't place a mine in the safe zone or if it's already a mine
+                if (isSafeZone || board[r][c].isMine) {
+                    continue;
+                }
+
+                board[r][c].isMine = true;
+                mineLocations.push({ r, c });
+                minesToPlace--;
+            }
+            console.log("Mines placed:", mineLocations);
+
+            // Calculate adjacent mines for all cells
+            calculateAdjacentMines();
+        }
+
+
+        /**
+         * Calculates the number of adjacent mines for each non-mine cell.
+         */
+        function calculateAdjacentMines() {
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (board[r][c].isMine) continue; // Skip mines
+
+                    let count = 0;
+                    // Iterate over 8 neighbors
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            if (dr === 0 && dc === 0) continue; // Skip self
+
+                            const nr = r + dr;
+                            const nc = c + dc;
+
+                            // Check bounds and if neighbor is a mine
+                            if (isValid(nr, nc) && board[nr][nc].isMine) {
+                                count++;
+                            }
+                        }
+                    }
+                    board[r][c].adjacentMines = count;
+                }
+            }
+            console.log("Adjacent mines calculated.");
+        }
+
+        /**
+         * Creates the DOM elements for the game board cells.
+         */
+        function createBoardDOM() {
+            gameBoard.style.gridTemplateColumns = `repeat(${cols}, 30px)`; // Set grid columns
+            gameBoard.style.gridTemplateRows = `repeat(${rows}, 30px)`;    // Set grid rows
+
+            // Adjust container width to fit the board exactly
+            const boardWidth = cols * 30 + (cols -1) * 1 + 8; // cols * cellWidth + (cols-1)*gap + border*2
+             const boardHeight = rows * 30 + (rows -1) * 1 + 8; // rows * cellHeight + (rows-1)*gap + border*2
+             gameBoard.style.width = `${boardWidth}px`;
+             gameBoard.style.height = `${boardHeight}px`;
+
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cellElement = document.createElement('div');
+                    cellElement.classList.add('cell');
+                    cellElement.dataset.row = r;
+                    cellElement.dataset.col = c;
+
+                    // Add event listeners
+                    cellElement.addEventListener('click', handleCellClick);
+                    cellElement.addEventListener('contextmenu', handleCellRightClick); // For flagging
+                    cellElement.addEventListener('mousedown', handleCellMouseDown); // For chord clicking
+
+                    gameBoard.appendChild(cellElement);
+                    board[r][c].element = cellElement; // Link data structure to DOM
+                }
+            }
+        }
+
+        /**
+         * Handles left-clicking on a cell to reveal it.
+         * @param {Event} event - The click event object.
+         */
+        function handleCellClick(event) {
+            if (gameOver) return; // Don't allow clicks after game over
+
+            const cellElement = event.target;
+            // Ensure click is on a cell, not the board gap
+            if (!cellElement.classList.contains('cell')) return;
+
+            const r = parseInt(cellElement.dataset.row);
+            const c = parseInt(cellElement.dataset.col);
+            const cellData = board[r][c];
+
+            // Prevent revealing flagged or already revealed cells
+            if (cellData.isFlagged || cellData.isRevealed) {
+                return;
+            }
+
+            // --- First Click Handling ---
+            if (firstClick) {
+                // Ensure first click is never a mine and ideally opens an area
+                placeMines(r, c); // Place mines *after* knowing the first click location
+                startTimer();
+                firstClick = false;
+
+                // If the first click happens to be a mine (shouldn't with safe zone, but as fallback)
+                // or if it's a numbered cell, we handle it normally.
+                // If it's a zero, revealCell will handle the cascade.
+                 if (board[r][c].isMine) {
+                     console.error("Error: First click was a mine despite safety measure!");
+                     // Find a non-mine and swap (simple recovery)
+                     outerLoop:
+                     for(let nr = 0; nr < rows; nr++) {
+                         for (let nc = 0; nc < cols; nc++) {
+                             if (!board[nr][nc].isMine) {
+                                 // Swap mine status
+                                 board[nr][nc].isMine = true;
+                                 mineLocations.push({r: nr, c: nc}); // Add new mine location
+                                 board[r][c].isMine = false;
+                                 // Remove original mine location if it was added (shouldn't happen)
+                                 const originalMineIndex = mineLocations.findIndex(loc => loc.r === r && loc.c === c);
+                                 if (originalMineIndex > -1) mineLocations.splice(originalMineIndex, 1);
+
+                                 // Recalculate adjacent mines globally for simplicity after swap
+                                 calculateAdjacentMines();
+                                 console.log(`Swapped mine from ${r},${c} to ${nr},${nc}`);
+                                 break outerLoop;
+                             }
+                         }
+                     }
+                 }
+            }
+
+            // --- Reveal Logic ---
+            revealCell(r, c);
+
+            // --- Check Game End Conditions ---
+             // Check win only after a non-mine cell is revealed
+            if (!board[r][c].isMine) {
+                checkWinCondition();
+            }
+        }
+
+         /**
+         * Handles right-clicking on a cell to toggle a flag.
+         * @param {Event} event - The contextmenu event object.
+         */
+        function handleCellRightClick(event) {
+            event.preventDefault(); // Prevent browser context menu
+            if (gameOver) return;
+
+            const cellElement = event.target;
+             // Ensure click is on a cell
+            if (!cellElement.classList.contains('cell')) return;
+
+            const r = parseInt(cellElement.dataset.row);
+            const c = parseInt(cellElement.dataset.col);
+            const cellData = board[r][c];
+
+            // Can only flag/unflag covered cells
+            if (!cellData.isRevealed) {
+                if (cellData.isFlagged) {
+                    // Unflagging
+                    cellData.isFlagged = false;
+                    cellElement.classList.remove('flagged');
+                    cellElement.innerHTML = ''; // Clear flag emoji
+                    flagsPlaced--;
+                } else {
+                    // Flagging (only if flag limit not reached, optional)
+                    // if (flagsPlaced < mineCount) { // Optional: Limit flags to mine count
+                        cellData.isFlagged = true;
+                        cellElement.classList.add('flagged');
+                         // Use innerHTML for flag for consistency with game over state
+                        cellElement.innerHTML = '🚩';
+                        flagsPlaced++;
+                    // }
+                }
+                updateMineCounter();
+            }
+        }
+
+        /**
+         * Handles mouse down events for potential chord clicking.
+         */
+        function handleCellMouseDown(event) {
+            if (gameOver || event.buttons !== 3) return; // Only proceed if L+R click and game not over
+
+            const cellElement = event.target;
+            // Ensure click is on a cell
+            if (!cellElement.classList.contains('cell')) return;
+
+            const r = parseInt(cellElement.dataset.row);
+            const c = parseInt(cellElement.dataset.col);
+            const cellData = board[r][c];
+
+            // Chord click only works on revealed, numbered cells
+            if (cellData.isRevealed && cellData.adjacentMines > 0) {
+                attemptChordReveal(r, c);
+            }
+        }
+
+        /**
+         * Attempts to reveal neighbors if the correct number of flags are placed around a revealed cell.
+         */
+        function attemptChordReveal(r, c) {
+            const cellData = board[r][c];
+            let adjacentFlags = 0;
+            let neighborsToReveal = [];
+
+            // Count adjacent flags and identify neighbors to potentially reveal
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const nr = r + dr;
+                    const nc = c + dc;
+
+                    if (isValid(nr, nc)) {
+                         if (board[nr][nc].isFlagged) {
+                            adjacentFlags++;
+                        } else if (!board[nr][nc].isRevealed) {
+                             // Store unrevealed, unflagged neighbors
+                             neighborsToReveal.push({r: nr, c: nc});
+                        }
+                    }
+                }
+            }
+
+            // If flag count matches the cell's number, reveal the identified neighbors
+            if (adjacentFlags === cellData.adjacentMines) {
+                neighborsToReveal.forEach(cell => {
+                    // Check again inside loop in case a reveal cascades and reveals one of these
+                    if (isValid(cell.r, cell.c) && !board[cell.r][cell.c].isRevealed && !board[cell.r][cell.c].isFlagged) {
+                         revealCell(cell.r, cell.c);
+                    }
+                });
+                 // Check win condition only if reveals happened and didn't hit a mine
+                if (!gameOver) {
+                    checkWinCondition();
+                }
+            }
+        }
+
+
+        /**
+         * Reveals a specific cell and handles the consequences (mine, number, or empty).
+         * Includes recursive reveal for empty cells.
+         */
+        function revealCell(r, c) {
+            // Boundary and state checks
+            if (!isValid(r, c) || board[r][c].isRevealed || board[r][c].isFlagged || gameOver) {
+                return;
+            }
+
+            const cellData = board[r][c];
+            const cellElement = cellData.element;
+
+            cellData.isRevealed = true;
+            cellElement.classList.add('revealed');
+            // Remove flag if it was somehow revealed (shouldn't happen with checks)
+            cellElement.classList.remove('flagged');
+            cellElement.innerHTML = ''; // Clear any previous content (like flag)
+
+
+            if (cellData.isMine) {
+                // --- Game Over - Loss ---
+                cellElement.classList.add('mine'); // Style the clicked mine (red background)
+                // cellElement.innerHTML = '💣';      // Show bomb in clicked cell
+                endGame(false); // Trigger loss sequence
+            } else {
+                // --- Safe Cell Revealed ---
+                revealedCells++;
+                cellElement.dataset.mines = cellData.adjacentMines; // For CSS styling/number display
+
+                if (cellData.adjacentMines > 0) {
+                    // Display the number of adjacent mines
+                    cellElement.textContent = cellData.adjacentMines;
+                } else {
+                    // --- Empty Cell (0 adjacent mines) - Recursive Reveal ---
+                    // Reveal all 8 neighbors using a slight delay to prevent stack overflow on huge boards
+                    // (though less likely with current sizes)
+                     setTimeout(() => {
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                if (dr === 0 && dc === 0) continue; // Skip self
+                                revealCell(r + dr, c + dc); // Recursive call
+                            }
+                        }
+                     }, 10); // Small delay
+                }
+            }
+        }
+
+        /**
+         * Checks if the player has won the game.
+         */
+        function checkWinCondition() {
+             // Check only if game is not already over
+            if (!gameOver && revealedCells === totalNonMineCells) {
+                endGame(true); // Trigger win sequence
+            }
+        }
+
+        /**
+         * Ends the game, displaying win/loss state and revealing mines/incorrect flags.
+         * @param {boolean} isWin - True if the player won, false otherwise.
+         */
+        function endGame(isWin) {
+            if (gameOver) return; // Prevent multiple calls
+
+            gameOver = true;
+            stopTimer();
+            gameBoard.classList.add('game-over'); // Add class for game-over specific styles
+
+            // Display win/loss message first
+            if (isWin) {
+                showMessage("You Win! 🎉");
+                flagsPlaced = 0; // Reset for correct counting below
+                 // Automatically flag remaining mines on win
+                 mineLocations.forEach(({ r, c }) => {
+                     const cellData = board[r][c];
+                     const cellElement = cellData.element;
+                     if (!cellData.isFlagged) {
+                         cellData.isFlagged = true;
+                         cellElement.classList.add('flagged');
+                         cellElement.innerHTML = '🚩'; // Show flag
+                         flagsPlaced++;
+                     }
+                 });
+                 updateMineCounter(); // Update counter to show all mines flagged
+            } else {
+                showMessage("Game Over! 💥");
+                // Reveal all mines and mark incorrect flags on loss
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const cellData = board[r][c];
+                        const cellElement = cellData.element;
+                        cellElement.style.cursor = 'default'; // Disable further interaction visually
+
+                        if (cellData.isMine) {
+                            // It's a mine
+                            if (!cellData.isFlagged && !cellData.isRevealed) {
+                                // Unflagged mine - reveal it with bomb symbol
+                                cellElement.classList.add('revealed', 'mine'); // Add revealed and mine styles
+                                // cellElement.innerHTML = '💣';      // Explicitly set bomb symbol
+                            } else if (cellData.isFlagged) {
+                                // Correctly flagged mine - ensure flag symbol is shown
+                                cellElement.innerHTML = '🚩';
+                            }
+                            // The clicked mine is already handled (red bg, bomb symbol)
+                        } else if (cellData.isFlagged) {
+                            // Incorrectly flagged cell (not a mine, but flagged)
+                             cellElement.classList.add('revealed', 'incorrect'); // Reveal it and mark as incorrect
+                             cellElement.innerHTML = '❌'; // Explicitly set cross symbol
+                        }
+                    }
+                }
+            }
+        }
+
+
+        /**
+         * Updates the mine counter display.
+         */
+        function updateMineCounter() {
+            const remainingMines = mineCount - flagsPlaced;
+            mineCounterDisplay.textContent = `Mines: ${remainingMines}`;
+        }
+
+        /**
+         * Starts the game timer.
+         */
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval); // Clear existing timer
+            secondsElapsed = 0;
+            timerDisplay.textContent = `Time: ${secondsElapsed}`;
+            timerInterval = setInterval(() => {
+                if (!gameOver) { // Only increment if game is running
+                     secondsElapsed++;
+                     timerDisplay.textContent = `Time: ${secondsElapsed}`;
+                } else {
+                    stopTimer(); // Stop timer if game ended unexpectedly
+                }
+            }, 1000); // Update every second
+        }
+
+        /**
+         * Stops the game timer.
+         */
+        function stopTimer() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+
+        /**
+         * Checks if a given row and column index is within the board boundaries.
+         */
+        function isValid(r, c) {
+            return r >= 0 && r < rows && c >= 0 && c < cols;
+        }
+
+        /**
+         * Displays a message in the message box.
+         */
+        function showMessage(text) {
+            messageBox.textContent = text;
+            messageBox.style.display = 'block';
+        }
+
+        /**
+         * Hides the message box.
+         */
+        function hideMessage() {
+            messageBox.style.display = 'none';
+        }
+
+
+        // --- Event Listeners Setup ---
+        newGameBtn.addEventListener('click', initGame);
+        difficultySelector.addEventListener('change', (event) => {
+            currentDifficulty = event.target.value;
+            initGame(); // Start a new game when difficulty changes
+        });
+
+        // --- Initial Game Load ---
+        window.onload = function() {
+            initGame(); // Start the first game when the page loads
+        };
+
+    </script>
+
+</body>
+</html>
