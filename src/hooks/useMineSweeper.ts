@@ -53,7 +53,7 @@ export function useMineSweeper(): UseMineSweeperReturn {
   // Initialize board
   const initializeBoard = useCallback(() => {
     const newBoard: CellData[][] = [];
-
+ 
     for (let row = 0; row < rows; row++) {
       newBoard[row] = [];
       for (let col = 0; col < cols; col++) {
