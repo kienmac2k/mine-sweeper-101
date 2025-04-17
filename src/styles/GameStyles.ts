@@ -120,7 +120,7 @@ export const Cell = styled.div<{
   height: 30px;
   border: ${props => props.isRevealed 
     ? '1px solid #757575' 
-    : '2px outset #bdbdbd'
+    : '1px outset #bdbdbd'
   };
   background-color: ${props => {
     if (props.isRevealed && props.isMine) return 'red'; // Clicked mine
@@ -129,7 +129,7 @@ export const Cell = styled.div<{
     if (props.gameOver && props.isIncorrectFlag) return '#e0e0e0'; // Incorrect flag at game over
     return '#bdbdbd'; // Default covered cell
   }};
-  
+  box-sizing: border-box;
   display: flex;
   justify-content: center;
   align-items: center;
