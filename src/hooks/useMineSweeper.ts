@@ -132,17 +132,48 @@ export function useMineSweeper(): UseMineSweeperReturn {
         }
       }
 
-      setBoard(newBoard);
+      return newBoard;
     },
     [board, mineCount, rows, cols, isValid]
   );
+
+  // Function to reveal cells recursively (for zero cells)
+  const revealZeroCells = useCallback((newBoard: CellData[][], row: number, col: number) => {
+    if (!isValid(row, col)) return 0;
+    
+    const cellData = newBoard[row][col];
+    if (cellData.isRevealed || cellData.isFlagged) return 0;
+    
+    // Reveal this cell
+    cellData.isRevealed = true;
+    let newReveals = 1;
+    
+    // Only recurse for zero cells
+    if (cellData.adjacentMines === 0) {
+      for (let drow = -1; drow <= 1; drow++) {
+        for (let dcol = -1; dcol <= 1; dcol++) {
+          if (drow === 0 && dcol === 0) continue;
+          
+          const newRow = row + drow;
+          const newCol = col + dcol;
+          
+          if (isValid(newRow, newCol)) {
+            newReveals += revealZeroCells(newBoard, newRow, newCol);
+          }
+        }
+      }
+    }
+    
+    return newReveals;
+  }, [isValid]);
 
   // Reveal a cell
   const revealCell = useCallback(
     (row: number, col: number) => {
       if (!isValid(row, col) || gameOver) return;
 
-      const newBoard = [...board];
+      // Create a new board copy
+      const newBoard = [...board.map(row => [...row])]; 
       const cellData = newBoard[row][col];
 
       // Skip if already revealed or flagged
@@ -150,61 +181,106 @@ export function useMineSweeper(): UseMineSweeperReturn {
 
       // First click handling
       if (firstClick) {
-        placeMines(row, col);
+        // Place mines and get the updated board
+        const boardWithMines = placeMines(row, col);
+        // Set first click to false to start the timer
         setFirstClick(false);
-      }
-
-      // Reveal the cell
-      cellData.isRevealed = true;
-
-      // Mine clicked - game over
-      if (cellData.isMine) {
-        setGameOver(true);
-        setIsWin(false);
-      } else {
-        // Increment revealed count
-        setRevealedCells((prev) => prev + 1);
-
+        
+        // Reveal the first cell and potentially cascade
+        let revealed = 0;
+        boardWithMines[row][col].isRevealed = true;
+        revealed++;
+        
         // If it's a zero cell, reveal neighbors
-        if (cellData.adjacentMines === 0) {
+        if (boardWithMines[row][col].adjacentMines === 0) {
           for (let drow = -1; drow <= 1; drow++) {
             for (let dcol = -1; dcol <= 1; dcol++) {
               if (drow === 0 && dcol === 0) continue;
-
+              
               const newRow = row + drow;
               const newCol = col + dcol;
+              
+              if (isValid(newRow, newCol)) {
+                revealed += revealZeroCells(boardWithMines, newRow, newCol);
+              }
+            }
+          }
+        }
+        
+        setBoard(boardWithMines);
+        setRevealedCells(revealed);
+        
+        // Check if won on first click (unlikely but possible)
+        if (revealed === totalNonMineCells) {
+          setGameOver(true);
+          setIsWin(true);
+          
+          // Flag all mines
+          mineLocations.forEach(({ row, col }) => {
+            if (!boardWithMines[row][col].isFlagged) {
+              boardWithMines[row][col].isFlagged = true;
+            }
+          });
+          
+          setFlagsPlaced(mineCount);
+          setBoard(boardWithMines);
+        }
+        
+        return;
+      }
 
-              // Use setTimeout to prevent stack overflow on large boards
-              setTimeout(() => {
-                if (
-                  isValid(newRow, newCol) &&
-                  !newBoard[newRow][newCol].isRevealed &&
-                  !newBoard[newRow][newCol].isFlagged
-                ) {
-                  revealCell(newRow, newCol);
-                }
-              }, 10);
+      // Reveal logic for subsequent clicks
+      if (cellData.isMine) {
+        // Mine clicked - game over
+        cellData.isRevealed = true;
+        setBoard(newBoard);
+        setGameOver(true);
+        setIsWin(false);
+        return;
+      }
+      
+      // Reveal the cell and count newly revealed cells
+      let newlyRevealed = 0;
+      cellData.isRevealed = true;
+      newlyRevealed++;
+      
+      // If it's a zero cell, reveal neighbors
+      if (cellData.adjacentMines === 0) {
+        for (let drow = -1; drow <= 1; drow++) {
+          for (let dcol = -1; dcol <= 1; dcol++) {
+            if (drow === 0 && dcol === 0) continue;
+            
+            const newRow = row + drow;
+            const newCol = col + dcol;
+            
+            if (isValid(newRow, newCol)) {
+              newlyRevealed += revealZeroCells(newBoard, newRow, newCol);
             }
           }
         }
       }
-
+      
+      const totalRevealed = revealedCells + newlyRevealed;
+      setRevealedCells(totalRevealed);
       setBoard(newBoard);
-
+      
       // Check win condition
-      if (revealedCells + 1 === totalNonMineCells && !cellData.isMine) {
+      if (totalRevealed >= totalNonMineCells) {
         setGameOver(true);
         setIsWin(true);
-
+        
         // Flag all mines on win
         const updatedBoard = [...newBoard];
+        let newFlags = 0;
+        
         mineLocations.forEach(({ row, col }) => {
           if (!updatedBoard[row][col].isFlagged) {
             updatedBoard[row][col].isFlagged = true;
-            setFlagsPlaced((prev) => prev + 1);
+            newFlags++;
           }
         });
-
+        
+        setFlagsPlaced(flagsPlaced + newFlags);
         setBoard(updatedBoard);
       }
     },
@@ -217,6 +293,9 @@ export function useMineSweeper(): UseMineSweeperReturn {
       placeMines,
       revealedCells,
       totalNonMineCells,
+      flagsPlaced,
+      mineCount,
+      revealZeroCells
     ]
   );
 
@@ -225,7 +304,7 @@ export function useMineSweeper(): UseMineSweeperReturn {
     (row: number, col: number) => {
       if (!isValid(row, col) || gameOver) return;
 
-      const newBoard = [...board];
+      const newBoard = [...board.map(row => [...row])];
       const cellData = newBoard[row][col];
 
       // Can only flag/unflag covered cells
